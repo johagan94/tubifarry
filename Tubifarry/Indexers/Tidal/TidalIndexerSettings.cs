@@ -28,13 +28,13 @@ namespace Tubifarry.Indexers.Tidal
 
         public TidalIndexerSettings()
         {
-            BaseUrl = "https://api.tidal.com/v1";
+            BaseUrl = "https://openapi.tidal.com/v2";
             CountryCode = "US";
             SearchLimit = 25;
             RequestTimeout = 60;
         }
 
-        [FieldDefinition(0, Label = "TIDAL API Base URL", Type = FieldType.Textbox, HelpText = "TIDAL API v1 base URL", Placeholder = "https://api.tidal.com/v1")]
+        [FieldDefinition(0, Label = "TIDAL API Base URL", Type = FieldType.Textbox, HelpText = "TIDAL OpenAPI v2 base URL", Placeholder = "https://openapi.tidal.com/v2")]
         public string BaseUrl { get; set; }
 
         [FieldDefinition(1, Label = "Country Code", Type = FieldType.Textbox, HelpText = "Two-letter country code for catalog access", Placeholder = "US")]
