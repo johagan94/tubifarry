@@ -100,6 +100,32 @@ public static partial class QueryBuilder
         return partial;
     }
 
+    /// <summary>
+    /// For hyphenated names like "Mach-Hommy", extracts the most distinctive word part
+    /// and wraps with wildcards, e.g. "*hommy*".
+    /// Soulseek tokenizes on hyphens in search queries but not in filenames,
+    /// so searching "mach-hommy" fails while "*hommy*" succeeds.
+    /// </summary>
+    public static string? BuildWildcardWord(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Length < 3)
+            return null;
+
+        // Split on hyphens, spaces, and other separators
+        string[] parts = text.Split(['-', '_', '.', ',', ' '], StringSplitOptions.RemoveEmptyEntries);
+
+        // Find the most distinctive part: longest non-stopword
+        string? best = parts
+            .Where(p => p.Length >= 3 && !StopWords.Contains(p))
+            .OrderByDescending(p => p.Length)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(best) || best.Length < 3)
+            return null;
+
+        return $"*{best}*";
+    }
+
     public static string ExtractDistinctive(string? text, int maxWords = 3)
     {
         if (string.IsNullOrWhiteSpace(text))
