@@ -151,8 +151,8 @@ jobs:
           # Restore NuGet packages first (suppress NU1902 vulnerability warnings from submodule deps)
           dotnet restore *.sln -p:NoWarn=NU1902 -p:WarningsNotAsErrors=NU1902
           
-          # Then build with all parameters
-          dotnet build *.sln -c Release -f ${{ inputs.framework }} \
+          # Then build with all parameters (--no-restore to skip implicit restore that ignores NoWarn)
+          dotnet build --no-restore *.sln -c Release -f ${{ inputs.framework }} \
             -p:Version=${{ inputs.package_version }} \
             -p:AssemblyVersion=${{ inputs.package_version }} \
             -p:FileVersion=${{ inputs.package_version }} \
