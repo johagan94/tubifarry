@@ -8,8 +8,8 @@
 		<AssemblyVersion>1.0.0.0</AssemblyVersion>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<Branch></Branch>
-		<Author>TypNull</Author>
-		<RepoUrl>https://github.com/TypNull/Tubifarry</RepoUrl>
+		<Author>johagan</Author>
+		<RepoUrl>https://github.com/jackohagan94-afk/tubifarry-dev</RepoUrl>
 		<CI>false</CI>
 		<InformationalVersion>$(AssemblyVersion)-$(Branch)</InformationalVersion>
 		<DefineConstants Condition="'$(CI)' == true">$(DefineConstants);CI</DefineConstants>

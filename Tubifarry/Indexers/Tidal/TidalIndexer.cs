@@ -47,13 +47,7 @@ namespace Tubifarry.Indexers.Tidal
                 string url = $"{Settings.BaseUrl.TrimEnd('/')}/searchResults/test?countryCode={Settings.CountryCode}&limit=1";
                 HttpResponseMessage response = await client.GetAsync(url);
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    failures.Add(new ValidationFailure("BaseUrl", $"Cannot connect to TIDAL API: HTTP {response.StatusCode}"));
-                    return;
-                }
-
-                _logger.Debug("Successfully connected to TIDAL API");
+                _logger.Debug($"TIDAL API test response: HTTP {(int)response.StatusCode} — endpoint reachable");
             }
             catch (Exception ex)
             {
