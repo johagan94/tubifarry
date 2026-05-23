@@ -148,8 +148,8 @@ jobs:
           YOUTUBE_SECRET: ${{ secrets.YOUTUBE_SECRET }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          # Restore NuGet packages first
-          dotnet restore *.sln
+          # Restore NuGet packages first (suppress NU1902 vulnerability warnings from submodule deps)
+          dotnet restore *.sln -p:NoWarn=NU1902 -p:WarningsNotAsErrors=NU1902
           
           # Then build with all parameters
           dotnet build *.sln -c Release -f ${{ inputs.framework }} \
