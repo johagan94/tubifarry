@@ -3,6 +3,7 @@ using NzbDrone.Common.Http;
 using NzbDrone.Common.Serializer;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.IndexerSearch.Definitions;
+using Tubifarry.Download.Clients.Tidal;
 
 namespace Tubifarry.Indexers.Tidal
 {
@@ -15,6 +16,9 @@ namespace Tubifarry.Indexers.Tidal
     {
         private readonly Logger _logger = logger;
         private TidalIndexerSettings? _settings;
+        private string _token = string.Empty;
+        private DateTime _tokenExpiry = DateTime.MinValue;
+        private static readonly SemaphoreSlim _tokenLock = new(1, 1);
 
         public IndexerPageableRequestChain GetRecentRequests() => new();
 
@@ -28,6 +32,31 @@ namespace Tubifarry.Indexers.Tidal
 
         public void SetSetting(TidalIndexerSettings settings) => _settings = settings;
 
+        private void EnsureToken()
+        {
+            if (DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
+                return;
+
+            _tokenLock.Wait();
+            try
+            {
+                if (DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
+                    return;
+
+                _token = TidalAuthHelper.GetAccessTokenAsync(_logger).GetAwaiter().GetResult();
+                _tokenExpiry = DateTime.UtcNow.AddHours(3);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to obtain TIDAL access token");
+                _token = string.Empty;
+            }
+            finally
+            {
+                _tokenLock.Release();
+            }
+        }
+
         private IndexerPageableRequestChain Generate(string query)
         {
             IndexerPageableRequestChain chain = new();
@@ -36,6 +65,8 @@ namespace Tubifarry.Indexers.Tidal
                 _logger.Warn("Empty query, skipping search request");
                 return chain;
             }
+
+            EnsureToken();
 
             string baseUrl = _settings!.BaseUrl.TrimEnd('/');
             string countryCode = _settings.CountryCode;
@@ -53,6 +84,9 @@ namespace Tubifarry.Indexers.Tidal
             };
             req.Headers["User-Agent"] = Tubifarry.UserAgent;
             req.Headers["Accept"] = "application/vnd.api+json, application/json;q=0.9, */*;q=0.8";
+
+            if (!string.IsNullOrEmpty(_token))
+                req.Headers["Authorization"] = $"Bearer {_token}";
 
             chain.Add([new IndexerRequest(req)]);
             return chain;
