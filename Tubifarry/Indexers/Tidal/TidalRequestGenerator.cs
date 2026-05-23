@@ -3,6 +3,7 @@ using NzbDrone.Common.Http;
 using NzbDrone.Common.Serializer;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.IndexerSearch.Definitions;
+using System.Collections.Concurrent;
 using Tubifarry.Download.Clients.Tidal;
 
 namespace Tubifarry.Indexers.Tidal
@@ -18,7 +19,11 @@ namespace Tubifarry.Indexers.Tidal
         private TidalIndexerSettings? _settings;
         private string _token = string.Empty;
         private DateTime _tokenExpiry = DateTime.MinValue;
+        private DateTime _lastRequestTime = DateTime.MinValue;
         private static readonly SemaphoreSlim _tokenLock = new(1, 1);
+        private static readonly SemaphoreSlim _rateLimitLock = new(1, 1);
+        private const int MinRequestIntervalMs = 250;
+        private const int TokenRefreshRetries = 1;
 
         public IndexerPageableRequestChain GetRecentRequests() => new();
 
@@ -32,6 +37,26 @@ namespace Tubifarry.Indexers.Tidal
 
         public void SetSetting(TidalIndexerSettings settings) => _settings = settings;
 
+        private void EnforceRateLimit()
+        {
+            _rateLimitLock.Wait();
+            try
+            {
+                TimeSpan sinceLast = DateTime.UtcNow - _lastRequestTime;
+                int remainingMs = MinRequestIntervalMs - (int)sinceLast.TotalMilliseconds;
+                if (remainingMs > 0)
+                {
+                    _logger.Trace($"TIDAL rate limit: waiting {remainingMs}ms");
+                    Thread.Sleep(remainingMs);
+                }
+                _lastRequestTime = DateTime.UtcNow;
+            }
+            finally
+            {
+                _rateLimitLock.Release();
+            }
+        }
+
         private void EnsureToken()
         {
             if (DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
@@ -43,13 +68,42 @@ namespace Tubifarry.Indexers.Tidal
                 if (DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
                     return;
 
-                _token = TidalAuthHelper.GetAccessTokenAsync(_logger).GetAwaiter().GetResult();
-                _tokenExpiry = DateTime.UtcNow.AddHours(3);
+                for (int attempt = 0; attempt <= TokenRefreshRetries; attempt++)
+                {
+                    try
+                    {
+                        _token = TidalAuthHelper.GetAccessTokenAsync(_logger).GetAwaiter().GetResult();
+                        _tokenExpiry = DateTime.UtcNow.AddHours(3);
+                        _logger.Debug("Obtained new TIDAL access token");
+                        return;
+                    }
+                    catch (Exception ex) when (attempt < TokenRefreshRetries)
+                    {
+                        _logger.Warn(ex, $"TIDAL token request failed (attempt {attempt + 1}), retrying...");
+                        Thread.Sleep(1000);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, "Failed to obtain TIDAL access token after retries");
+                        _token = string.Empty;
+                    }
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                _logger.Error(ex, "Failed to obtain TIDAL access token");
+                _tokenLock.Release();
+            }
+        }
+
+        public void InvalidateToken()
+        {
+            _tokenLock.Wait();
+            try
+            {
                 _token = string.Empty;
+                _tokenExpiry = DateTime.MinValue;
+                _logger.Debug("TIDAL token invalidated, will refresh on next request");
+                TidalAuthHelper.InvalidateToken();
             }
             finally
             {
@@ -66,6 +120,7 @@ namespace Tubifarry.Indexers.Tidal
                 return chain;
             }
 
+            EnforceRateLimit();
             EnsureToken();
 
             string baseUrl = _settings!.BaseUrl.TrimEnd('/');
