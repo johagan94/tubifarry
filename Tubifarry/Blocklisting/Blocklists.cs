@@ -17,4 +17,7 @@ namespace Tubifarry.Blocklisting
 
     public class SubSonicBlocklist(IBlocklistRepository blocklistRepository) : BaseBlocklist<SubSonicDownloadProtocol>(blocklistRepository)
     { }
+
+    public class TidalBlocklist(IBlocklistRepository blocklistRepository) : BaseBlocklist<TidalDownloadProtocol>(blocklistRepository)
+    { }
 }
