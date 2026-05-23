@@ -44,7 +44,7 @@ namespace Tubifarry.Indexers.Tidal
                 client.DefaultRequestHeaders.Add("User-Agent", Tubifarry.UserAgent);
                 client.DefaultRequestHeaders.Add("Accept", "application/json");
 
-                string url = $"{Settings.BaseUrl.TrimEnd('/')}/search?countryCode={Settings.CountryCode}&query=test&limit=1";
+                string url = $"{Settings.BaseUrl.TrimEnd('/')}/searchResults/test?countryCode={Settings.CountryCode}&limit=1";
                 HttpResponseMessage response = await client.GetAsync(url);
 
                 if (!response.IsSuccessStatusCode)
