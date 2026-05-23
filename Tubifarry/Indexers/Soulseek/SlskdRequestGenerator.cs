@@ -165,6 +165,9 @@ namespace Tubifarry.Indexers.Soulseek
                 _sentry.LogExpectedTracks(searchId, query.Tracks?.ToList() ?? [], query.TrackCount);
 
                 dynamic request = CreateResultRequest(searchId, query);
+
+                ScheduleSearchCleanup(searchId);
+
                 return new IndexerRequest(request);
             }
             catch (HttpException ex) when (ex.Response.StatusCode == HttpStatusCode.Conflict)
@@ -182,6 +185,44 @@ namespace Tubifarry.Indexers.Soulseek
             {
                 _logger.Error(ex, $"Error generating search request for: {searchText}");
                 return null;
+            }
+        }
+
+        private void ScheduleSearchCleanup(string searchId)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(2));
+                    await DeleteSearchAsync(searchId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Trace(ex, $"Background cleanup of search {searchId} failed (non-critical)");
+                }
+            });
+        }
+
+        private async Task DeleteSearchAsync(string searchId)
+        {
+            try
+            {
+                HttpRequest deleteRequest = new HttpRequestBuilder($"{Settings.BaseUrl}/api/v0/searches/{searchId}")
+                    .SetHeader("X-API-KEY", Settings.ApiKey)
+                    .SetHeader("Accept", "application/json")
+                    .Build();
+
+                deleteRequest.Method = HttpMethod.Delete;
+
+                HttpResponse response = await _client.ExecuteAsync(deleteRequest);
+
+                if (response.StatusCode == HttpStatusCode.NoContent || response.StatusCode == HttpStatusCode.OK)
+                    _logger.Trace($"Cleaned up search: {searchId}");
+            }
+            catch (Exception ex)
+            {
+                _logger.Trace(ex, $"Failed to delete search {searchId}");
             }
         }
 
