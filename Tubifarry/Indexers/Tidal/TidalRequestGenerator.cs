@@ -41,7 +41,7 @@ namespace Tubifarry.Indexers.Tidal
             string countryCode = _settings.CountryCode;
             int limit = _settings.SearchLimit;
 
-            string url = $"{baseUrl}/searchresults/{Uri.EscapeDataString(query)}?countryCode={countryCode}&include=albums,tracks&limit={limit}";
+            string url = $"{baseUrl}/search?countryCode={countryCode}&query={Uri.EscapeDataString(query)}&include=albums,tracks&limit={limit}";
             _logger.Trace("Creating TIDAL search request: {Url}", url);
 
             HttpRequest req = new(url)
