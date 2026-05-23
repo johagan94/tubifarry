@@ -37,6 +37,46 @@ public sealed class WildcardStrategy : SearchStrategyBase
     }
 }
 
+/// <summary>
+/// Handles Soulseek hyphen-tokenization edge case.
+/// Soulseek treats hyphens as word separators in search queries but NOT in filenames,
+/// so searching "mach-hommy" fails (ANDs "mach" + "hommy") while "*hommy*" succeeds.
+/// This strategy extracts the most distinctive word from hyphenated artist names
+/// and searches with wildcards.
+/// </summary>
+public sealed class HyphenFallbackStrategy : SearchStrategyBase
+{
+    public override string Name => "Hyphen Fallback";
+    public override SearchTier Tier => SearchTier.Fallback;
+    public override int Priority => 5;
+
+    public override bool IsEnabled(SlskdSettings settings) => settings.UseFallbackSearch;
+
+    public override bool CanExecute(SearchContext context, QueryType queryType)
+    {
+        string? artist = context.SearchArtist;
+        if (string.IsNullOrWhiteSpace(artist))
+            return false;
+
+        return artist.Contains('-') || artist.Contains('.') || artist.Contains('_');
+    }
+
+    public override string? GetQuery(SearchContext context, QueryType queryType)
+    {
+        string? artistWild = QueryBuilder.BuildWildcardWord(context.SearchArtist);
+        if (string.IsNullOrWhiteSpace(artistWild))
+            return null;
+
+        string? album = context.SearchAlbum;
+        if (!string.IsNullOrWhiteSpace(album) && album.Length > 2)
+            return QueryBuilder.Build(artistWild, album);
+
+        return context.HasValidYear
+            ? QueryBuilder.Build(artistWild, context.Year)
+            : artistWild;
+    }
+}
+
 public sealed class PartialAlbumStrategy : SearchStrategyBase
 {
     public override string Name => "Partial Album";
