@@ -124,13 +124,11 @@ namespace Tubifarry.Core.Model
 
                 albumName = $"{albumName[..match.Index].Trim()} (feat. {featuringArtist})";
             }
-            return FeatReplaceRegex().Replace(albumName, match => $"{{{match.Value.Trim('(', ')')}}}");
+            return albumName;
         }
 
         [GeneratedRegex(@"(?i)\b(feat\.|ft\.|featuring)\b", RegexOptions.IgnoreCase, "de-DE")]
         private static partial Regex FeatRegex();
 
-        [GeneratedRegex(@"\((?!feat\.)[^)]*\)")]
-        private static partial Regex FeatReplaceRegex();
     }
 }

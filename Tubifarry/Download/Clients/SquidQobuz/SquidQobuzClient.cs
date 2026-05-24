@@ -19,6 +19,7 @@ namespace Tubifarry.Download.Clients.SquidQobuz
     {
         private readonly IHttpClient _httpClient;
         private readonly INamingConfigService _namingService;
+        private readonly SquidQobuzCaptchaSolver _captchaSolver;
         private readonly ConcurrentDictionary<string, DownloadClientItem> _items = new();
 
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -37,18 +38,20 @@ namespace Tubifarry.Download.Clients.SquidQobuz
             INamingConfigService namingConfigService,
             IDiskProvider diskProvider,
             ILocalizationService localizationService,
+            SquidQobuzCaptchaSolver captchaSolver,
             Logger logger)
             : base(configService, diskProvider, null, localizationService, logger)
         {
             _httpClient = httpClient;
             _namingService = namingConfigService;
+            _captchaSolver = captchaSolver;
         }
 
         public override async Task<string> Download(RemoteAlbum remoteAlbum, IIndexer indexer)
         {
             string baseUrl = Settings.BaseUrl.TrimEnd('/');
             string artist = remoteAlbum.Artist?.Name ?? "Unknown";
-            string albumTitle = remoteAlbum.Release?.Title ?? "Unknown";
+            string albumTitle = StripBrackets(remoteAlbum.Release?.Album ?? remoteAlbum.Albums?.FirstOrDefault()?.Title ?? remoteAlbum.Release?.Title ?? "Unknown");
 
             int quality = Settings.Quality switch
             {
@@ -99,6 +102,8 @@ namespace Tubifarry.Download.Clients.SquidQobuz
                 string safeDir = Sanitize($"{albumArtist} - {albumName}");
                 string destDir = Path.Combine(Settings.DownloadPath, safeDir);
                 Directory.CreateDirectory(destDir);
+                string downloadId = destDir;
+                long totalSize = 0;
 
                 _logger.Debug($"Downloading {tracks.Count} tracks to: {destDir}");
 
@@ -106,7 +111,8 @@ namespace Tubifarry.Download.Clients.SquidQobuz
                 foreach (SquidTrackItem track in tracks)
                 {
                     string trackId = track.Id?.ToString() ?? throw new Exception("Missing track ID");
-                    string dlJson = await GetJsonAsync($"{baseUrl}/download-music?track_id={trackId}&quality={quality}");
+                    string? captchaCookie = _captchaSolver.GetCaptchaCookie(baseUrl);
+                    string dlJson = await GetJsonWithCaptchaAsync($"{baseUrl}/download-music?track_id={trackId}&quality={quality}", captchaCookie);
                     SquidDownloadResponse? dl = JsonSerializer.Deserialize<SquidDownloadResponse>(dlJson, JsonOptions);
                     string? fileUrl = dl?.Data?.Url;
 
@@ -123,22 +129,28 @@ namespace Tubifarry.Download.Clients.SquidQobuz
 
                     _logger.Trace($"Downloading: {filename}");
                     HttpResponse fileResponse = await _httpClient.GetAsync(new HttpRequest(fileUrl));
+                    if (fileResponse.StatusCode != System.Net.HttpStatusCode.OK || fileResponse.ResponseData == null)
+                        throw new Exception($"Track download failed for '{track.Title}': HTTP {(int)fileResponse.StatusCode}");
+
                     await File.WriteAllBytesAsync(filePath, fileResponse.ResponseData);
-
-                    DownloadClientItem item = new()
-                    {
-                        DownloadId = $"{albumId}_{trackId}",
-                        Title = track.Title ?? trackId,
-                        TotalSize = fileResponse.ResponseData.Length,
-                        Status = DownloadItemStatus.Completed,
-                        OutputPath = new OsPath(filePath),
-                        RemainingTime = TimeSpan.Zero
-                    };
-
-                    _items[item.DownloadId] = item;
+                    totalSize += fileResponse.ResponseData.Length;
                 }
 
-                return destDir;
+                _items[downloadId] = new DownloadClientItem
+                {
+                    DownloadId = downloadId,
+                    Title = $"{albumArtist} - {albumName}",
+                    TotalSize = totalSize,
+                    RemainingSize = 0,
+                    Status = DownloadItemStatus.Completed,
+                    OutputPath = new OsPath(destDir),
+                    RemainingTime = TimeSpan.Zero,
+                    CanBeRemoved = true,
+                    CanMoveFiles = true,
+                    DownloadClientInfo = DownloadClientItemClientInfo.FromDownloadClient(this, false)
+                };
+
+                return downloadId;
             }
             catch (Exception ex)
             {
@@ -156,14 +168,49 @@ namespace Tubifarry.Download.Clients.SquidQobuz
                 _logger.Warn($"SquidQobuz request failed: HTTP {(int)response.StatusCode}");
                 throw new Exception($"SquidQobuz request failed: HTTP {(int)response.StatusCode}");
             }
-            return response.Content;
+            return response.Content ?? "";
+        }
+
+        private async Task<string> GetJsonWithCaptchaAsync(string url, string? captchaCookie)
+        {
+            HttpRequest req = new(url) { RequestTimeout = TimeSpan.FromSeconds(Settings.RequestTimeout) };
+
+            if (captchaCookie != null)
+                req.Headers["Cookie"] = captchaCookie;
+
+            HttpResponse response = await _httpClient.GetAsync(req);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden && response.Content?.Contains("Captcha required") == true)
+            {
+                _logger.Debug("SquidQobuz: captcha required, solving...");
+                string? cookie = _captchaSolver.GetCaptchaCookie(Settings.BaseUrl, forceRefresh: true);
+                if (cookie == null)
+                    throw new Exception("SquidQobuz captcha could not be solved");
+
+                HttpRequest retryReq = new(url) { RequestTimeout = TimeSpan.FromSeconds(Settings.RequestTimeout) };
+                retryReq.Headers["Cookie"] = cookie;
+                response = await _httpClient.GetAsync(retryReq);
+            }
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                string body = response.Content ?? "";
+                if (body.Length > 200) body = body[..200];
+                _logger.Warn($"SquidQobuz request failed: HTTP {(int)response.StatusCode} {body}");
+                throw new Exception($"SquidQobuz request failed: HTTP {(int)response.StatusCode}");
+            }
+            return response.Content ?? "";
         }
 
         public override IEnumerable<DownloadClientItem> GetItems() => _items.Values;
 
         public override void RemoveItem(DownloadClientItem item, bool deleteData)
         {
-            if (deleteData && File.Exists(item.OutputPath.FullPath))
+            if (deleteData && Directory.Exists(item.OutputPath.FullPath))
+            {
+                try { Directory.Delete(item.OutputPath.FullPath, true); } catch { }
+            }
+            else if (deleteData && File.Exists(item.OutputPath.FullPath))
             {
                 try { File.Delete(item.OutputPath.FullPath); } catch { }
             }
@@ -213,6 +260,19 @@ namespace Tubifarry.Download.Clients.SquidQobuz
             foreach (char c in Path.GetInvalidFileNameChars())
                 name = name.Replace(c, '_');
             return name.Trim();
+        }
+
+        private static string StripBrackets(string title)
+        {
+            while (true)
+            {
+                int start = title.LastIndexOf('[');
+                if (start < 0) break;
+                string candidate = title[..start].TrimEnd();
+                if (candidate.Length == 0) break;
+                title = candidate;
+            }
+            return title;
         }
 
         private static string GuessExtension(string url)

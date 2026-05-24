@@ -34,7 +34,7 @@ namespace Tubifarry.Download.Clients.SquidQobuz
         public string DownloadPath { get; set; } = string.Empty;
 
         [FieldDefinition(1, Label = "Squid.wtf Qobuz URL", Type = FieldType.Textbox, HelpText = "URL of the squid.wtf Qobuz instance (region-specific)", Placeholder = "https://eu.qobuz.squid.wtf/api")]
-        public string BaseUrl { get; set; } = "https://eu.qobuz.squid.wtf/api";
+        public string BaseUrl { get; set; } = "https://qobuz.squid.wtf/api";
 
         [FieldDefinition(2, Label = "Quality", Type = FieldType.Select, SelectOptions = typeof(SquidQobuzQuality), HelpText = "Preferred download quality")]
         public int Quality { get; set; } = (int)SquidQobuzQuality.LOSSLESS;

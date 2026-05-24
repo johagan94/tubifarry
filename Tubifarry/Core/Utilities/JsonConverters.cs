@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
 
 namespace Tubifarry.Core.Utilities
 {
@@ -25,6 +26,43 @@ namespace Tubifarry.Core.Utilities
     }
 
     /// <summary>
+    /// Custom JSON converter that accepts mixed optional API values as strings.
+    /// </summary>
+    public class NullableStringConverter : JsonConverter<string?>
+    {
+        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return reader.TokenType switch
+            {
+                JsonTokenType.String => reader.GetString(),
+                JsonTokenType.Number => reader.GetDouble().ToString(CultureInfo.InvariantCulture),
+                JsonTokenType.True => "true",
+                JsonTokenType.False => "false",
+                JsonTokenType.Null => null,
+                _ => SkipAndReturnNull(ref reader)
+            };
+        }
+
+        public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+        {
+            if (value is null)
+            {
+                writer.WriteNullValue();
+            }
+            else
+            {
+                writer.WriteStringValue(value);
+            }
+        }
+
+        private static string? SkipAndReturnNull(ref Utf8JsonReader reader)
+        {
+            reader.Skip();
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Custom JSON converter for flexible float handling
     /// </summary>
     public class FloatConverter : JsonConverter<float>
@@ -41,6 +79,50 @@ namespace Tubifarry.Core.Utilities
         }
 
         public override void Write(Utf8JsonWriter writer, float value, JsonSerializerOptions options) => writer.WriteNumberValue(value);
+    }
+
+    /// <summary>
+    /// Custom JSON converter for optional durations and other API numbers that may be missing or non-finite.
+    /// </summary>
+    public class NullableDoubleConverter : JsonConverter<double?>
+    {
+        public override double? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+
+            if (reader.TokenType == JsonTokenType.Number)
+            {
+                return reader.TryGetDouble(out double result) && double.IsFinite(result)
+                    ? result
+                    : null;
+            }
+
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                string? value = reader.GetString();
+                if (string.IsNullOrWhiteSpace(value))
+                    return null;
+
+                return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double result) && double.IsFinite(result)
+                    ? result
+                    : null;
+            }
+
+            throw new JsonException($"Cannot convert token type {reader.TokenType} to nullable double");
+        }
+
+        public override void Write(Utf8JsonWriter writer, double? value, JsonSerializerOptions options)
+        {
+            if (value.HasValue)
+            {
+                writer.WriteNumberValue(value.Value);
+            }
+            else
+            {
+                writer.WriteNullValue();
+            }
+        }
     }
 
     /// <summary>

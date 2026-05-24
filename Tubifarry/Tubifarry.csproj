@@ -40,12 +40,9 @@
 	<ItemGroup>
 		<ProjectReference Include="..\Submodules\Lidarr\src\NzbDrone.Common\Lidarr.Common.csproj" />
 		<ProjectReference Include="..\Submodules\Lidarr\src\NzbDrone.Core\Lidarr.Core.csproj" />
-		<ProjectReference Include="..\Submodules\Lidarr\src\Lidarr.Http\Lidarr.Http.csproj">
-			<Private>false</Private>
-			<ExcludeAssets>runtime</ExcludeAssets>
-		</ProjectReference>
+		<ProjectReference Include="..\Submodules\Lidarr\src\Lidarr.Http\Lidarr.Http.csproj" />
 	</ItemGroup>
-	
+
 	<ItemGroup>
 		<PackageReference Update="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
 			<PrivateAssets>all</PrivateAssets>
@@ -62,5 +59,15 @@
 	<!-- Force copy System.Text.Json.dll to output directory for ILRepack -->
 	<Target Name="CopySystemTextJson" AfterTargets="Build">
 		<Copy SourceFiles="$(PkgSystem_Text_Json)\lib\net8.0\System.Text.Json.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+	</Target>
+
+	<!-- Remove all non-plugin assemblies from output - only merged plugin DLL should be deployed -->
+	<Target Name="CleanPluginOutput" AfterTargets="ILRepacker">
+		<ItemGroup>
+			<ExtraFiles Include="$(OutputPath)*.dll" Exclude="$(OutputPath)Lidarr.Plugin.*.dll" />
+			<ExtraFiles Include="$(OutputPath)*.pdb" Exclude="$(OutputPath)Lidarr.Plugin.*.pdb" />
+			<ExtraFiles Include="$(OutputPath)*.xml" />
+		</ItemGroup>
+		<Delete Files="@(ExtraFiles)" />
 	</Target>
 </Project>

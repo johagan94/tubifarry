@@ -4,7 +4,9 @@ using NzbDrone.Common.Serializer;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.IndexerSearch.Definitions;
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Tubifarry.Download.Clients.Tidal;
+using Tubifarry.Indexers.CatalogSearch;
 
 namespace Tubifarry.Indexers.Tidal
 {
@@ -29,11 +31,25 @@ namespace Tubifarry.Indexers.Tidal
 
         public IndexerPageableRequestChain GetSearchRequests(AlbumSearchCriteria searchCriteria)
         {
-            string query = string.Join(' ', new[] { searchCriteria.AlbumQuery, searchCriteria.ArtistQuery }.Where(s => !string.IsNullOrWhiteSpace(s)));
-            return Generate(query);
+            CatalogSearchRequestContext context = new(
+                searchCriteria.ArtistQuery,
+                GetAliases(searchCriteria.Artist?.Metadata.Value.Aliases, null),
+                [searchCriteria.AlbumQuery],
+                false);
+
+            return Generate(context, searchCriteria.AlbumQuery);
         }
 
-        public IndexerPageableRequestChain GetSearchRequests(ArtistSearchCriteria searchCriteria) => Generate(searchCriteria.ArtistQuery);
+        public IndexerPageableRequestChain GetSearchRequests(ArtistSearchCriteria searchCriteria)
+        {
+            CatalogSearchRequestContext context = new(
+                searchCriteria.ArtistQuery,
+                GetAliases(searchCriteria.Artist?.Metadata.Value.Aliases, searchCriteria.CleanArtistQuery),
+                GetExpectedAlbums(searchCriteria.Albums),
+                true);
+
+            return Generate(context, null);
+        }
 
         public void SetSetting(TidalIndexerSettings settings) => _settings = settings;
 
@@ -59,13 +75,13 @@ namespace Tubifarry.Indexers.Tidal
 
         private void EnsureToken()
         {
-            if (DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
+            if (_tokenExpiry != DateTime.MinValue && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
                 return;
 
             _tokenLock.Wait();
             try
             {
-                if (DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
+                if (_tokenExpiry != DateTime.MinValue && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5) && !string.IsNullOrEmpty(_token))
                     return;
 
                 for (int attempt = 0; attempt <= TokenRefreshRetries; attempt++)
@@ -111,10 +127,10 @@ namespace Tubifarry.Indexers.Tidal
             }
         }
 
-        private IndexerPageableRequestChain Generate(string query)
+        private IndexerPageableRequestChain Generate(CatalogSearchRequestContext context, string? album)
         {
             IndexerPageableRequestChain chain = new();
-            if (string.IsNullOrWhiteSpace(query))
+            if (string.IsNullOrWhiteSpace(context.SearchArtist) && string.IsNullOrWhiteSpace(album))
             {
                 _logger.Warn("Empty query, skipping search request");
                 return chain;
@@ -127,24 +143,52 @@ namespace Tubifarry.Indexers.Tidal
             string countryCode = _settings.CountryCode;
             int limit = _settings.SearchLimit;
 
-            string url = $"{baseUrl}/searchResults/{Uri.EscapeDataString(query)}?countryCode={countryCode}&include=albums,tracks&limit={limit}";
-            _logger.Trace("Creating TIDAL search request: {Url}", url);
-
-            HttpRequest req = new(url)
+            bool first = true;
+            foreach (string query in CatalogSearchNormalizer.BuildQueryVariants(context.SearchArtist, album))
             {
-                RequestTimeout = TimeSpan.FromSeconds(_settings.RequestTimeout),
-                ContentSummary = new TidalRequestData(baseUrl, "search", limit).ToJson(),
-                SuppressHttpError = false,
-                LogHttpError = true
-            };
-            req.Headers["User-Agent"] = Tubifarry.UserAgent;
-            req.Headers["Accept"] = "application/vnd.api+json, application/json;q=0.9, */*;q=0.8";
+                string url = $"{baseUrl}/searchResults/{Uri.EscapeDataString(query)}?countryCode={countryCode}&include=albums,albums.artists&limit={limit}";
+                _logger.Trace("Creating TIDAL search request: {Url}", url);
 
-            if (!string.IsNullOrEmpty(_token))
-                req.Headers["Authorization"] = $"Bearer {_token}";
+                HttpRequest req = new(url)
+                {
+                    RequestTimeout = TimeSpan.FromSeconds(_settings.RequestTimeout),
+                    ContentSummary = JsonSerializer.Serialize(context),
+                    SuppressHttpError = false,
+                    LogHttpError = true
+                };
+                req.Headers["User-Agent"] = Tubifarry.UserAgent;
+                req.Headers["Accept"] = "application/vnd.api+json, application/json;q=0.9, */*;q=0.8";
 
-            chain.Add([new IndexerRequest(req)]);
+                if (!string.IsNullOrEmpty(_token))
+                    req.Headers["Authorization"] = $"Bearer {_token}";
+
+                if (first)
+                {
+                    chain.Add([new IndexerRequest(req)]);
+                    first = false;
+                }
+                else
+                {
+                    chain.AddTier([new IndexerRequest(req)]);
+                }
+            }
+
             return chain;
+        }
+
+        private static IReadOnlyList<string> GetExpectedAlbums(IEnumerable<NzbDrone.Core.Music.Album> albums) =>
+            albums
+                .Select(album => album.Title)
+                .Where(title => !string.IsNullOrWhiteSpace(title))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+        private static IReadOnlyList<string> GetAliases(IEnumerable<string>? aliases, string? cleanArtistQuery)
+        {
+            List<string> result = aliases?.Where(alias => !string.IsNullOrWhiteSpace(alias)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
+            if (!string.IsNullOrWhiteSpace(cleanArtistQuery) && !result.Contains(cleanArtistQuery, StringComparer.OrdinalIgnoreCase))
+                result.Add(cleanArtistQuery);
+            return result;
         }
     }
 }

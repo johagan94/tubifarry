@@ -82,9 +82,10 @@ namespace Tubifarry.Download.Clients.Tidal
                     BuildTrackFilename(
                         new Track { Title = ReleaseInfo.Title, TrackNumber = "1", AbsoluteTrackNumber = 1, Artist = new LazyLoaded<Artist>(new Artist { Name = ReleaseInfo.Artist ?? "Unknown Artist" }) },
                         new Album { Title = ReleaseInfo.Album ?? ReleaseInfo.Title }));
-                await ConvertAudioAsync(tempFile, outputFile, token);
+                string stagedFile = Path.Combine(_destinationPath.FullPath, $"tidal_converted_{Guid.NewGuid():N}{Path.GetExtension(outputFile)}");
+                stagedFile = await ConvertAudioAsync(tempFile, stagedFile, token);
 
-                InitiateDownload(outputFile, outputFile, token);
+                InitiateDownload(stagedFile, outputFile, token);
                 _requestContainer.Add(_trackContainer);
             }
             finally
@@ -134,7 +135,7 @@ namespace Tubifarry.Download.Clients.Tidal
                         Title = trackItem.Attributes?.Title ?? $"Track {i + 1}",
                         TrackNumber = (trackItem.Attributes?.TrackNumber ?? i + 1).ToString(),
                         AbsoluteTrackNumber = trackItem.Attributes?.TrackNumber ?? i + 1,
-                        Duration = trackItem.Attributes?.Duration ?? 0,
+                        Duration = (int)(trackItem.Attributes?.Duration ?? 0),
                         Artist = new LazyLoaded<Artist>(new Artist { Name = ReleaseInfo.Artist ?? "Unknown Artist" })
                     };
 
@@ -147,9 +148,10 @@ namespace Tubifarry.Download.Clients.Tidal
 
                     string fileName = BuildTrackFilename(trackMeta, albumMeta);
                     string outputFile = Path.Combine(_destinationPath.FullPath, fileName);
-                    await ConvertAudioAsync(tempFile, outputFile, token);
+                    string stagedFile = Path.Combine(_destinationPath.FullPath, $"tidal_converted_{Guid.NewGuid():N}{Path.GetExtension(outputFile)}");
+                    stagedFile = await ConvertAudioAsync(tempFile, stagedFile, token);
 
-                    InitiateDownload(outputFile, outputFile, token);
+                    InitiateDownload(stagedFile, outputFile, token);
                     _logger.Trace($"Track {i + 1}/{tracks.Count} processed: {trackItem.Attributes?.Title}");
                 }
                 catch (Exception ex)
@@ -164,7 +166,7 @@ namespace Tubifarry.Download.Clients.Tidal
         {
             string qualityFormats = Options.DownloadQuality switch
             {
-                0 => "FLAC_HIRES&formats=FLAC",           // HI_RES_LOSSLESS
+                0 => "formats=FLAC_HIRES,FLAC",           // HI_RES_LOSSLESS
                 1 => "formats=FLAC",                        // LOSSLESS
                 2 => "formats=AACLC",                       // HIGH
                 _ => "formats=HEAACV1"                      // LOW
@@ -285,7 +287,7 @@ namespace Tubifarry.Download.Clients.Tidal
             _logger.Trace($"Downloaded all {segmentNumbers.Count} segments to: {outputFile}");
         }
 
-        private async Task ConvertAudioAsync(string inputFile, string outputFile, CancellationToken token)
+        private async Task<string> ConvertAudioAsync(string inputFile, string outputFile, CancellationToken token)
         {
             string outputExt = Options.OutputFormat switch
             {
@@ -304,7 +306,7 @@ namespace Tubifarry.Download.Clients.Tidal
                 _logger.Warn("FFmpeg not found, keeping raw M4S concatenation");
                 if (inputFile != outputFile)
                     File.Copy(inputFile, outputFile, true);
-                return;
+                return outputFile;
             }
 
             string args = Options.OutputFormat switch
@@ -345,6 +347,8 @@ namespace Tubifarry.Download.Clients.Tidal
                 _logger.Trace($"FFmpeg conversion complete: {outputFile}");
                 try { File.Delete(inputFile); } catch { }
             }
+
+            return outputFile;
         }
 
         private string BuildMp3Args(string inputFile, string outputFile)
@@ -415,6 +419,13 @@ namespace Tubifarry.Download.Clients.Tidal
                 DestinationPath = _destinationPath.FullPath,
                 Handler = Options.Handler,
                 DeleteFilesOnFailure = true,
+                RequestCompleated = (_, __) =>
+                {
+                    if (!string.Equals(sourceFile, finalDest, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { File.Delete(sourceFile); } catch { }
+                    }
+                },
                 RequestFailed = (_, __) => LogAndAppendMessage($"File copy failed: {finalDest}", LogLevel.Error),
                 WriteMode = WriteMode.AppendOrTruncate,
             });
