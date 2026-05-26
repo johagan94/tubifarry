@@ -140,16 +140,20 @@ namespace Tubifarry.Indexers.Tidal
             }
 
             EnforceRateLimit();
-            EnsureToken();
 
-            string baseUrl = _settings!.BaseUrl.TrimEnd('/');
-            string countryCode = _settings.CountryCode;
-            int limit = _settings.SearchLimit;
+            if (_settings!.ConnectionMode == (int)TidalConnectionMode.DirectOpenApi)
+                EnsureToken();
+
+            string baseUrl = _settings.ConnectionMode == (int)TidalConnectionMode.MonochromeProxy
+                ? _settings.MonochromeBaseUrl.TrimEnd('/')
+                : _settings.BaseUrl.TrimEnd('/');
 
             bool first = true;
             foreach (string query in CatalogSearchNormalizer.BuildQueryVariants(context.SearchArtist, album))
             {
-                string url = $"{baseUrl}/searchResults/{Uri.EscapeDataString(query)}?countryCode={countryCode}&include=albums,albums.artists&limit={limit}";
+                string url = _settings.ConnectionMode == (int)TidalConnectionMode.MonochromeProxy
+                    ? $"{baseUrl}/search/?al={Uri.EscapeDataString(query)}"
+                    : $"{baseUrl}/searchResults/{Uri.EscapeDataString(query)}?countryCode={_settings.CountryCode}&include=albums,albums.artists&limit={_settings.SearchLimit}";
                 _logger.Trace("Creating TIDAL search request: {Url}", url);
 
                 HttpRequest req = new(url)
@@ -162,7 +166,7 @@ namespace Tubifarry.Indexers.Tidal
                 req.Headers["User-Agent"] = Tubifarry.UserAgent;
                 req.Headers["Accept"] = "application/vnd.api+json, application/json;q=0.9, */*;q=0.8";
 
-                if (!string.IsNullOrEmpty(_token))
+                if (_settings.ConnectionMode == (int)TidalConnectionMode.DirectOpenApi && !string.IsNullOrEmpty(_token))
                     req.Headers["Authorization"] = $"Bearer {_token}";
 
                 if (first)

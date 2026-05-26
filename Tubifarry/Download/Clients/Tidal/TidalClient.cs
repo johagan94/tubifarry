@@ -10,6 +10,7 @@ using NzbDrone.Core.Organizer;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.RemotePathMappings;
 using Tubifarry.Download.Base;
+using Tubifarry.Indexers.Tidal;
 
 namespace Tubifarry.Download.Clients.Tidal
 {
@@ -69,15 +70,33 @@ namespace Tubifarry.Download.Clients.Tidal
 
             try
             {
-                _ = TidalAuthHelper.GetAccessTokenAsync(Settings.ClientId, Settings.ClientSecret, _logger).GetAwaiter().GetResult();
-
-                _logger.Debug("Successfully authenticated with TIDAL API");
+                if (Settings.ConnectionMode == (int)TidalConnectionMode.MonochromeProxy)
+                {
+                    TestMonochromeProxy();
+                    _logger.Debug("Successfully connected to Monochrome TIDAL proxy");
+                }
+                else
+                {
+                    _ = TidalAuthHelper.GetAccessTokenAsync(Settings.ClientId, Settings.ClientSecret, _logger).GetAwaiter().GetResult();
+                    _logger.Debug("Successfully authenticated with TIDAL API");
+                }
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Error connecting to TIDAL API");
-                failures.Add(new ValidationFailure("", $"Cannot connect to TIDAL API: {ex.Message}"));
+                failures.Add(new ValidationFailure("", $"Cannot connect to TIDAL: {ex.Message}"));
             }
+        }
+
+        private void TestMonochromeProxy()
+        {
+            using System.Net.Http.HttpClient client = new();
+            client.DefaultRequestHeaders.Add("User-Agent", Tubifarry.UserAgent);
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+
+            string url = $"{Settings.MonochromeBaseUrl.TrimEnd('/')}/search/?al=Discovery%20Daft%20Punk";
+            using System.Net.Http.HttpResponseMessage response = client.GetAsync(url).GetAwaiter().GetResult();
+            response.EnsureSuccessStatusCode();
         }
     }
 }

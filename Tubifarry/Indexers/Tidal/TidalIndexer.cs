@@ -19,7 +19,7 @@ namespace Tubifarry.Indexers.Tidal
         public override int PageSize => 25;
         public override TimeSpan RateLimit => TimeSpan.FromSeconds(1);
 
-        public override ProviderMessage Message => new("TIDAL catalog search requires configured OpenAPI client credentials.", ProviderMessageType.Info);
+        public override ProviderMessage Message => new("TIDAL catalog search can use Direct OpenAPI credentials or Monochrome Proxy mode for personal testing.", ProviderMessageType.Info);
 
         public TidalIndexer(
             ITidalRequestGenerator requestGenerator,

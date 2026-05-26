@@ -30,6 +30,18 @@ namespace Tubifarry.Indexers.Tidal
                 if (searchResponse == null)
                     return releases;
 
+                if (searchResponse.Data?.Albums?.Items != null)
+                {
+                    foreach (TidalMonochromeAlbum album in searchResponse.Data.Albums.Items)
+                    {
+                        ReleaseInfo release = CreateMonochromeAlbumData(album);
+                        if (ShouldInclude(release, requestContext))
+                            releases.Add(release);
+                    }
+
+                    return releases;
+                }
+
                 Dictionary<string, TidalIncludedItem>? included = searchResponse.Included?
                     .GroupBy(GetIncludedKey)
                     .ToDictionary(g => g.Key, g => g.First());
@@ -65,6 +77,35 @@ namespace Tubifarry.Indexers.Tidal
                 _logger.Error(ex, "Error parsing TIDAL search response");
             }
             return releases;
+        }
+
+        private static ReleaseInfo CreateMonochromeAlbumData(TidalMonochromeAlbum item)
+        {
+            string artistName = item.Artists?.FirstOrDefault()?.Name ?? item.Artist?.Name ?? "Unknown Artist";
+            (AudioFormat format, int bitrate, int bitDepth) = GetQuality(item.AudioQuality);
+            int trackCount = item.NumberOfTracks ?? Math.Max(item.Items?.Count ?? 0, 1);
+            long duration = (long)(item.Duration ?? 0);
+            long estimatedSize = IndexerParserHelper.EstimateSize(0, duration, bitrate, trackCount);
+
+            AlbumData data = new("TIDAL", nameof(TidalDownloadProtocol))
+            {
+                AlbumId = $"tidal://album/{item.Id}",
+                AlbumName = item.Title ?? "Unknown Album",
+                ArtistName = artistName,
+                InfoUrl = $"https://tidal.com/album/{item.Id}",
+                TotalTracks = trackCount,
+                ReleaseDate = NormalizeReleaseDate(item.ReleaseDate),
+                ReleaseDatePrecision = "day",
+                CustomString = item.Cover ?? "",
+                ExplicitContent = item.Explicit ?? false,
+                Codec = format,
+                Bitrate = bitrate,
+                BitDepth = bitDepth,
+                Duration = duration,
+                Size = estimatedSize
+            };
+            data.ParseReleaseDate();
+            return data.ToReleaseInfo();
         }
 
         private static ReleaseInfo CreateAlbumData(TidalIncludedItem item, Dictionary<string, TidalIncludedItem>? included)
@@ -183,6 +224,14 @@ namespace Tubifarry.Indexers.Tidal
                 "LOW" => (AudioFormat.AAC, 96, 16),
                 _ => (AudioFormat.AAC, 320, 16)
             };
+        }
+
+        private static string NormalizeReleaseDate(string? releaseDate)
+        {
+            if (DateTime.TryParse(releaseDate, out DateTime parsed))
+                return parsed.ToString("yyyy-MM-dd");
+
+            return DateTime.UtcNow.ToString("yyyy-MM-dd");
         }
 
         private static long EstimateAlbumSize(int trackCount, int bitrate)
