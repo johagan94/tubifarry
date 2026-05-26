@@ -1,4 +1,3 @@
-using FluentValidation.Results;
 using NLog;
 using NzbDrone.Common.Http;
 using NzbDrone.Core.Configuration;
@@ -20,7 +19,7 @@ namespace Tubifarry.Indexers.Tidal
         public override int PageSize => 25;
         public override TimeSpan RateLimit => TimeSpan.FromSeconds(1);
 
-        public override ProviderMessage Message => new("TIDAL provides high-quality FLAC and AAC music downloads via the free-tier API.", ProviderMessageType.Info);
+        public override ProviderMessage Message => new("TIDAL catalog search requires configured OpenAPI client credentials.", ProviderMessageType.Info);
 
         public TidalIndexer(
             ITidalRequestGenerator requestGenerator,
@@ -34,26 +33,6 @@ namespace Tubifarry.Indexers.Tidal
         {
             _requestGenerator = requestGenerator;
             _parser = parser;
-        }
-
-        protected override async Task Test(List<ValidationFailure> failures)
-        {
-            try
-            {
-                using System.Net.Http.HttpClient client = new();
-                client.DefaultRequestHeaders.Add("User-Agent", Tubifarry.UserAgent);
-                client.DefaultRequestHeaders.Add("Accept", "application/json");
-
-                string url = $"{Settings.BaseUrl.TrimEnd('/')}/searchResults/test?countryCode={Settings.CountryCode}&limit=1";
-                HttpResponseMessage response = await client.GetAsync(url);
-
-                _logger.Debug($"TIDAL API test response: HTTP {(int)response.StatusCode} — endpoint reachable");
-            }
-            catch (Exception ex)
-            {
-                _logger.Error(ex, "Error connecting to TIDAL API");
-                failures.Add(new ValidationFailure("BaseUrl", ex.Message));
-            }
         }
 
         public override IIndexerRequestGenerator GetRequestGenerator()

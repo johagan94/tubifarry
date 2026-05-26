@@ -57,7 +57,7 @@ namespace Tubifarry.Download.Clients.Tidal
         {
             _logger.Trace($"Processing {(Options.IsTrack ? "track" : "album")}: {ReleaseInfo.Title}");
 
-            string accessToken = await TidalAuthHelper.GetAccessTokenAsync(_logger, token);
+            string accessToken = await TidalAuthHelper.GetAccessTokenAsync(Options.ClientId, Options.ClientSecret, _logger, token);
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 
             if (Options.IsTrack)

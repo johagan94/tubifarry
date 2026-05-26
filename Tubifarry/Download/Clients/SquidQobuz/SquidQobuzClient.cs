@@ -20,6 +20,7 @@ namespace Tubifarry.Download.Clients.SquidQobuz
         private readonly IHttpClient _httpClient;
         private readonly INamingConfigService _namingService;
         private readonly SquidQobuzCaptchaSolver _captchaSolver;
+        private readonly SquidQobuzCompletedItemRecovery _completedItemRecovery;
         private readonly ConcurrentDictionary<string, DownloadClientItem> _items = new();
 
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -39,12 +40,14 @@ namespace Tubifarry.Download.Clients.SquidQobuz
             IDiskProvider diskProvider,
             ILocalizationService localizationService,
             SquidQobuzCaptchaSolver captchaSolver,
+            SquidQobuzCompletedItemRecovery completedItemRecovery,
             Logger logger)
             : base(configService, diskProvider, null, localizationService, logger)
         {
             _httpClient = httpClient;
             _namingService = namingConfigService;
             _captchaSolver = captchaSolver;
+            _completedItemRecovery = completedItemRecovery;
         }
 
         public override async Task<string> Download(RemoteAlbum remoteAlbum, IIndexer indexer)
@@ -202,7 +205,18 @@ namespace Tubifarry.Download.Clients.SquidQobuz
             return response.Content ?? "";
         }
 
-        public override IEnumerable<DownloadClientItem> GetItems() => _items.Values;
+        public override IEnumerable<DownloadClientItem> GetItems()
+        {
+            foreach (DownloadClientItem item in _items.Values)
+                yield return item;
+
+            DownloadClientItemClientInfo clientInfo = DownloadClientItemClientInfo.FromDownloadClient(this, false);
+            foreach (DownloadClientItem item in _completedItemRecovery.GetCompletedItems(Settings.DownloadPath, clientInfo))
+            {
+                if (!_items.ContainsKey(item.DownloadId))
+                    yield return item;
+            }
+        }
 
         public override void RemoveItem(DownloadClientItem item, bool deleteData)
         {

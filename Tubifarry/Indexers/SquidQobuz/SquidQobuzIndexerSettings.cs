@@ -26,7 +26,7 @@ namespace Tubifarry.Indexers.SquidQobuz
             RequestTimeout = 60;
         }
 
-        [FieldDefinition(0, Label = "Squid.wtf Qobuz API URL", Type = FieldType.Textbox, HelpText = "URL of the squid.wtf Qobuz API endpoint (region-specific)", Placeholder = "https://eu.qobuz.squid.wtf/api")]
+        [FieldDefinition(0, Label = "Squid.wtf Qobuz API URL", Type = FieldType.Textbox, HelpText = "URL of the squid.wtf Qobuz API endpoint", Placeholder = "https://qobuz.squid.wtf/api")]
         public string BaseUrl { get; set; }
 
         [FieldDefinition(1, Type = FieldType.Number, Label = "Request Timeout", Unit = "seconds", HelpText = "Timeout for requests to squid.wtf Qobuz API", Advanced = true)]

@@ -69,25 +69,7 @@ namespace Tubifarry.Download.Clients.Tidal
 
             try
             {
-                using System.Net.Http.HttpClient client = new();
-                client.DefaultRequestHeaders.Add("User-Agent", Tubifarry.UserAgent);
-
-                string authUrl = "https://auth.tidal.com/v1/oauth2/token";
-                Dictionary<string, string> body = new()
-                {
-                    ["client_id"] = TidalAuthHelper.ClientId,
-                    ["client_secret"] = TidalAuthHelper.ClientSecret,
-                    ["grant_type"] = "client_credentials"
-                };
-
-                using FormUrlEncodedContent content = new(body);
-                HttpResponseMessage response = client.PostAsync(authUrl, content).GetAwaiter().GetResult();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    failures.Add(new ValidationFailure("", $"Cannot authenticate with TIDAL: HTTP {(int)response.StatusCode}"));
-                    return;
-                }
+                _ = TidalAuthHelper.GetAccessTokenAsync(Settings.ClientId, Settings.ClientSecret, _logger).GetAwaiter().GetResult();
 
                 _logger.Debug("Successfully authenticated with TIDAL API");
             }

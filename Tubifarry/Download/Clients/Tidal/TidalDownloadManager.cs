@@ -54,6 +54,8 @@ namespace Tubifarry.Download.Clients.Tidal
                 IsTrack = isTrack,
                 ItemId = itemId,
                 CountryCode = provider.Settings.CountryCode,
+                ClientId = provider.Settings.ClientId,
+                ClientSecret = provider.Settings.ClientSecret,
                 DownloadQuality = provider.Settings.DownloadQuality,
                 OutputFormat = provider.Settings.OutputFormat,
                 Mp3Bitrate = provider.Settings.Mp3Bitrate

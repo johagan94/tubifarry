@@ -15,9 +15,10 @@ namespace Tubifarry.Indexers.Tidal
         public void SetSetting(TidalIndexerSettings settings);
     }
 
-    public class TidalRequestGenerator(Logger logger) : ITidalRequestGenerator
+    public class TidalRequestGenerator(Logger logger, ITidalTokenProvider tokenProvider) : ITidalRequestGenerator
     {
         private readonly Logger _logger = logger;
+        private readonly ITidalTokenProvider _tokenProvider = tokenProvider;
         private TidalIndexerSettings? _settings;
         private string _token = string.Empty;
         private DateTime _tokenExpiry = DateTime.MinValue;
@@ -27,7 +28,8 @@ namespace Tubifarry.Indexers.Tidal
         private const int MinRequestIntervalMs = 250;
         private const int TokenRefreshRetries = 1;
 
-        public IndexerPageableRequestChain GetRecentRequests() => new();
+        public IndexerPageableRequestChain GetRecentRequests() =>
+            Generate(new CatalogSearchRequestContext("Daft Punk", [], ["Discovery"], false), "Discovery");
 
         public IndexerPageableRequestChain GetSearchRequests(AlbumSearchCriteria searchCriteria)
         {
@@ -88,7 +90,7 @@ namespace Tubifarry.Indexers.Tidal
                 {
                     try
                     {
-                        _token = TidalAuthHelper.GetAccessTokenAsync(_logger).GetAwaiter().GetResult();
+                        _token = _tokenProvider.GetAccessToken(_settings!.ClientId, _settings.ClientSecret);
                         _tokenExpiry = DateTime.UtcNow.AddHours(3);
                         _logger.Debug("Obtained new TIDAL access token");
                         return;
@@ -119,7 +121,8 @@ namespace Tubifarry.Indexers.Tidal
                 _token = string.Empty;
                 _tokenExpiry = DateTime.MinValue;
                 _logger.Debug("TIDAL token invalidated, will refresh on next request");
-                TidalAuthHelper.InvalidateToken();
+                if (_settings != null)
+                    _tokenProvider.InvalidateToken(_settings.ClientId);
             }
             finally
             {

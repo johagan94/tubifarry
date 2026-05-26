@@ -29,6 +29,12 @@ namespace Tubifarry.Download.Clients.Tidal
                 .WithMessage("Max download speed must be greater than or equal to 0.")
                 .LessThanOrEqualTo(100_000)
                 .WithMessage("Max download speed must be less than or equal to 100 MB/s.");
+
+            RuleFor(x => x.ClientId)
+                .NotEmpty().WithMessage("TIDAL client ID is required.");
+
+            RuleFor(x => x.ClientSecret)
+                .NotEmpty().WithMessage("TIDAL client secret is required.");
         }
     }
 
@@ -42,22 +48,28 @@ namespace Tubifarry.Download.Clients.Tidal
         [FieldDefinition(1, Label = "Download Quality", Type = FieldType.Select, SelectOptions = typeof(TidalDownloadQuality), HelpText = "Preferred audio quality for downloads. Hi-Res Lossless requires TIDAL HiFi Plus subscription equivalent.")]
         public int DownloadQuality { get; set; } = (int)TidalDownloadQuality.LOSSLESS;
 
-        [FieldDefinition(2, Label = "Country Code", Type = FieldType.Textbox, HelpText = "Two-letter country code for catalog access", Placeholder = "US")]
+        [FieldDefinition(2, Label = "Client ID", Type = FieldType.Textbox, HelpText = "TIDAL OpenAPI client ID", Privacy = PrivacyLevel.ApiKey)]
+        public string ClientId { get; set; } = string.Empty;
+
+        [FieldDefinition(3, Label = "Client Secret", Type = FieldType.Password, HelpText = "TIDAL OpenAPI client secret", Privacy = PrivacyLevel.Password)]
+        public string ClientSecret { get; set; } = string.Empty;
+
+        [FieldDefinition(4, Label = "Country Code", Type = FieldType.Textbox, HelpText = "Two-letter country code for catalog access", Placeholder = "US")]
         public string CountryCode { get; set; } = "US";
 
-        [FieldDefinition(3, Type = FieldType.Number, Label = "Connection Retries", HelpText = "Number of times to retry failed connections", Advanced = true)]
+        [FieldDefinition(5, Type = FieldType.Number, Label = "Connection Retries", HelpText = "Number of times to retry failed connections", Advanced = true)]
         public int ConnectionRetries { get; set; } = 3;
 
-        [FieldDefinition(4, Type = FieldType.Number, Label = "Max Parallel Downloads", HelpText = "Maximum number of downloads that can run simultaneously")]
+        [FieldDefinition(6, Type = FieldType.Number, Label = "Max Parallel Downloads", HelpText = "Maximum number of downloads that can run simultaneously")]
         public int MaxParallelDownloads { get; set; } = 2;
 
-        [FieldDefinition(5, Label = "Max Download Speed", Type = FieldType.Number, HelpText = "Set to 0 for unlimited speed. Limits download speed per file.", Unit = "KB/s", Advanced = true)]
+        [FieldDefinition(7, Label = "Max Download Speed", Type = FieldType.Number, HelpText = "Set to 0 for unlimited speed. Limits download speed per file.", Unit = "KB/s", Advanced = true)]
         public int MaxDownloadSpeed { get; set; } = 0;
 
-        [FieldDefinition(6, Label = "Output Format", Type = FieldType.Select, SelectOptions = typeof(TidalOutputFormat), HelpText = "Output audio format. FLAC preserves lossless quality.", Advanced = true)]
+        [FieldDefinition(8, Label = "Output Format", Type = FieldType.Select, SelectOptions = typeof(TidalOutputFormat), HelpText = "Output audio format. FLAC preserves lossless quality.", Advanced = true)]
         public int OutputFormat { get; set; } = (int)TidalOutputFormat.FLAC;
 
-        [FieldDefinition(7, Label = "MP3 Bitrate", Type = FieldType.Select, SelectOptions = typeof(TidalMp3Bitrate), HelpText = "Bitrate for MP3 output when format is set to MP3.", Advanced = true)]
+        [FieldDefinition(9, Label = "MP3 Bitrate", Type = FieldType.Select, SelectOptions = typeof(TidalMp3Bitrate), HelpText = "Bitrate for MP3 output when format is set to MP3.", Advanced = true)]
         public int Mp3Bitrate { get; set; } = (int)TidalMp3Bitrate.k320;
 
         public NzbDroneValidationResult Validate() => new(Validator.Validate(this));
