@@ -5,6 +5,7 @@ using NzbDrone.Core.Configuration;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.Parser;
 using NzbDrone.Core.ThingiProvider;
+using Tubifarry.Download.Clients.SquidQobuz;
 
 namespace Tubifarry.Indexers.SquidQobuz
 {
@@ -52,11 +53,12 @@ namespace Tubifarry.Indexers.SquidQobuz
             {
                 string testUrl = $"{baseUrl}/get-music?q=test&limit=1";
                 HttpRequest req = new(testUrl) { RequestTimeout = TimeSpan.FromSeconds(Settings.RequestTimeout) };
+                SquidQobuzApi.AddHeaders(req, Settings.TokenCountry);
                 HttpResponse response = await _httpClient.ExecuteAsync(req);
 
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    failures.Add(new ValidationFailure("BaseUrl", $"Cannot connect to squid.wtf Qobuz API: HTTP {(int)response.StatusCode}"));
+                    failures.Add(new ValidationFailure("BaseUrl", SquidQobuzApi.BuildFailureMessage("squid.wtf Qobuz API", (int)response.StatusCode, response.Content)));
                     return;
                 }
 
@@ -65,6 +67,11 @@ namespace Tubifarry.Indexers.SquidQobuz
                     failures.Add(new ValidationFailure("BaseUrl", "Unexpected response from squid.wtf Qobuz API"));
                     return;
                 }
+            }
+            catch (HttpException ex) when (ex.Response != null)
+            {
+                _logger.Warn(ex, "squid.wtf Qobuz API returned HTTP {0}", (int)ex.Response.StatusCode);
+                failures.Add(new ValidationFailure("BaseUrl", SquidQobuzApi.BuildFailureMessage("squid.wtf Qobuz API", (int)ex.Response.StatusCode, ex.Response.Content)));
             }
             catch (Exception ex)
             {

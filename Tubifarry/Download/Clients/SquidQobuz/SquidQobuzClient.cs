@@ -165,11 +165,22 @@ namespace Tubifarry.Download.Clients.SquidQobuz
         private async Task<string> GetJsonAsync(string url)
         {
             HttpRequest req = new(url) { RequestTimeout = TimeSpan.FromSeconds(Settings.RequestTimeout) };
-            HttpResponse response = await _httpClient.GetAsync(req);
+            SquidQobuzApi.AddHeaders(req, Settings.TokenCountry);
+            HttpResponse response;
+            try
+            {
+                response = await _httpClient.GetAsync(req);
+            }
+            catch (HttpException ex) when (ex.Response != null)
+            {
+                _logger.Warn(ex, "SquidQobuz request failed: HTTP {0}", (int)ex.Response.StatusCode);
+                throw new Exception(SquidQobuzApi.BuildFailureMessage("SquidQobuz", (int)ex.Response.StatusCode, ex.Response.Content), ex);
+            }
+
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
                 _logger.Warn($"SquidQobuz request failed: HTTP {(int)response.StatusCode}");
-                throw new Exception($"SquidQobuz request failed: HTTP {(int)response.StatusCode}");
+                throw new Exception(SquidQobuzApi.BuildFailureMessage("SquidQobuz", (int)response.StatusCode, response.Content));
             }
             return response.Content ?? "";
         }
@@ -177,11 +188,25 @@ namespace Tubifarry.Download.Clients.SquidQobuz
         private async Task<string> GetJsonWithCaptchaAsync(string url, string? captchaCookie)
         {
             HttpRequest req = new(url) { RequestTimeout = TimeSpan.FromSeconds(Settings.RequestTimeout) };
+            SquidQobuzApi.AddHeaders(req, Settings.TokenCountry);
 
             if (captchaCookie != null)
                 req.Headers["Cookie"] = captchaCookie;
 
-            HttpResponse response = await _httpClient.GetAsync(req);
+            HttpResponse response;
+            try
+            {
+                response = await _httpClient.GetAsync(req);
+            }
+            catch (HttpException ex) when (ex.Response != null && ex.Response.StatusCode == System.Net.HttpStatusCode.Forbidden && ex.Response.Content?.Contains("Captcha required") == true)
+            {
+                response = ex.Response;
+            }
+            catch (HttpException ex) when (ex.Response != null)
+            {
+                _logger.Warn(ex, "SquidQobuz request failed: HTTP {0}", (int)ex.Response.StatusCode);
+                throw new Exception(SquidQobuzApi.BuildFailureMessage("SquidQobuz", (int)ex.Response.StatusCode, ex.Response.Content), ex);
+            }
 
             if (response.StatusCode == System.Net.HttpStatusCode.Forbidden && response.Content?.Contains("Captcha required") == true)
             {
@@ -191,8 +216,17 @@ namespace Tubifarry.Download.Clients.SquidQobuz
                     throw new Exception("SquidQobuz captcha could not be solved");
 
                 HttpRequest retryReq = new(url) { RequestTimeout = TimeSpan.FromSeconds(Settings.RequestTimeout) };
+                SquidQobuzApi.AddHeaders(retryReq, Settings.TokenCountry);
                 retryReq.Headers["Cookie"] = cookie;
-                response = await _httpClient.GetAsync(retryReq);
+                try
+                {
+                    response = await _httpClient.GetAsync(retryReq);
+                }
+                catch (HttpException ex) when (ex.Response != null)
+                {
+                    _logger.Warn(ex, "SquidQobuz retry request failed: HTTP {0}", (int)ex.Response.StatusCode);
+                    throw new Exception(SquidQobuzApi.BuildFailureMessage("SquidQobuz", (int)ex.Response.StatusCode, ex.Response.Content), ex);
+                }
             }
 
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
@@ -200,7 +234,7 @@ namespace Tubifarry.Download.Clients.SquidQobuz
                 string body = response.Content ?? "";
                 if (body.Length > 200) body = body[..200];
                 _logger.Warn($"SquidQobuz request failed: HTTP {(int)response.StatusCode} {body}");
-                throw new Exception($"SquidQobuz request failed: HTTP {(int)response.StatusCode}");
+                throw new Exception(SquidQobuzApi.BuildFailureMessage("SquidQobuz", (int)response.StatusCode, response.Content));
             }
             return response.Content ?? "";
         }
@@ -255,12 +289,18 @@ namespace Tubifarry.Download.Clients.SquidQobuz
             {
                 string testUrl = $"{Settings.BaseUrl.TrimEnd('/')}/get-music?q=test&limit=1";
                 HttpRequest req = new(testUrl) { RequestTimeout = TimeSpan.FromSeconds(Settings.RequestTimeout) };
+                SquidQobuzApi.AddHeaders(req, Settings.TokenCountry);
                 HttpResponse response = _httpClient.Get(req);
 
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
-                    failures.Add(new ValidationFailure("BaseUrl", $"Cannot connect to squid.wtf Qobuz: HTTP {(int)response.StatusCode}"));
+                    failures.Add(new ValidationFailure("BaseUrl", SquidQobuzApi.BuildFailureMessage("squid.wtf Qobuz", (int)response.StatusCode, response.Content)));
                 else
                     _logger.Debug("Successfully connected to squid.wtf Qobuz API");
+            }
+            catch (HttpException ex) when (ex.Response != null)
+            {
+                _logger.Warn(ex, "squid.wtf Qobuz returned HTTP {0}", (int)ex.Response.StatusCode);
+                failures.Add(new ValidationFailure("BaseUrl", SquidQobuzApi.BuildFailureMessage("squid.wtf Qobuz", (int)ex.Response.StatusCode, ex.Response.Content)));
             }
             catch (Exception ex)
             {

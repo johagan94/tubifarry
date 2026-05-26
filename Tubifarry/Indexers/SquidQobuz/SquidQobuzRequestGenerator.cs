@@ -3,6 +3,7 @@ using NzbDrone.Common.Http;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.IndexerSearch.Definitions;
 using System.Text.Json;
+using Tubifarry.Download.Clients.SquidQobuz;
 using Tubifarry.Indexers.CatalogSearch;
 
 namespace Tubifarry.Indexers.SquidQobuz
@@ -79,7 +80,7 @@ namespace Tubifarry.Indexers.SquidQobuz
                     RequestTimeout = TimeSpan.FromSeconds(_settings.RequestTimeout),
                     ContentSummary = JsonSerializer.Serialize(context)
                 };
-                req.Headers["User-Agent"] = Tubifarry.UserAgent;
+                SquidQobuzApi.AddHeaders(req, _settings.TokenCountry);
 
                 if (first)
                 {
