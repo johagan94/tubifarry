@@ -7,7 +7,7 @@
 		<AssemblyName>Lidarr.Plugin.$(MSBuildProjectName)</AssemblyName>
 		<AssemblyVersion>1.0.0.0</AssemblyVersion>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-		<Branch></Branch>
+		<Branch>develop</Branch>
 		<Author>johagan</Author>
 		<RepoUrl>https://github.com/jackohagan94-afk/tubifarry-dev</RepoUrl>
 		<CI>false</CI>

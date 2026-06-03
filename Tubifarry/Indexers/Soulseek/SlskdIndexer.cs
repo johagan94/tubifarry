@@ -25,7 +25,7 @@ namespace Tubifarry.Indexers.Soulseek
         public override bool SupportsRss => false;
         public override bool SupportsSearch => true;
         public override int PageSize => 50;
-        public override TimeSpan RateLimit => new(3);
+        public override TimeSpan RateLimit => TimeSpan.FromSeconds(3);
 
         private readonly SlskdRequestGenerator _indexerRequestGenerator;
         private readonly IParseIndexerResponse _parseIndexerResponse;

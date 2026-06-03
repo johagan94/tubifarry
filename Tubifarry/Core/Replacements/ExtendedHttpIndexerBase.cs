@@ -71,7 +71,8 @@ namespace Tubifarry.Core.Replacements
 
         public override async Task<IList<ReleaseInfo>> Fetch(ArtistSearchCriteria searchCriteria)
         {
-            if (!SupportsSearch) Array.Empty<ReleaseInfo>();
+            if (!SupportsSearch)
+                return Array.Empty<ReleaseInfo>();
 
             return await FetchReleases(g => g.GetSearchRequests(searchCriteria));
         }
