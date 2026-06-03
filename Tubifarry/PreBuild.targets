@@ -5,6 +5,7 @@
 		<SubmoduleDir>$(MSBuildProjectDirectory)\..\Submodules\Lidarr</SubmoduleDir>
 		<!-- Check for a known file/folder that should exist if submodule is initialized -->
 		<SubmoduleMarker>$(SubmoduleDir)\src\NzbDrone.Core\Lidarr.Core.csproj</SubmoduleMarker>
+		<BuildLidarrFrontend Condition="'$(BuildLidarrFrontend)' == ''">false</BuildLidarrFrontend>
 	</PropertyGroup>
 	
 	<!-- Initialize git submodules if not already done -->
@@ -29,7 +30,7 @@
 	</Target>
 	
 	<!-- Build the Lidarr frontend if unavailable -->
-	<Target Name="LidarrFrontendBuild" BeforeTargets="BeforeBuild" DependsOnTargets="InitializeSubmodules" Condition="'$(CI)' != 'true'">
+	<Target Name="LidarrFrontendBuild" BeforeTargets="BeforeBuild" DependsOnTargets="InitializeSubmodules" Condition="'$(CI)' != 'true' AND '$(BuildLidarrFrontend)' == 'true'">
 		<Message Importance="High" Text="Checking Lidarr frontend..." Condition="!Exists('$(SubmoduleDir)\_output\UI\')" />
 		
 		<Exec

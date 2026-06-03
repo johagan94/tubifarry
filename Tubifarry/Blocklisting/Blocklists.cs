@@ -20,4 +20,7 @@ namespace Tubifarry.Blocklisting
 
     public class TidalBlocklist(IBlocklistRepository blocklistRepository) : BaseBlocklist<TidalDownloadProtocol>(blocklistRepository)
     { }
+
+    public class SquidQobuzBlocklist(IBlocklistRepository blocklistRepository) : BaseBlocklist<SquidQobuzDownloadProtocol>(blocklistRepository)
+    { }
 }

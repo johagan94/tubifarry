@@ -23,6 +23,10 @@ namespace Tubifarry.Download.Clients.SquidQobuz
                 .GreaterThanOrEqualTo(10)
                 .LessThanOrEqualTo(300)
                 .WithMessage("Request timeout must be between 10 and 300 seconds.");
+
+            RuleFor(x => x.TokenCountry)
+                .NotEmpty().WithMessage("Token Country is required.")
+                .Matches("^[A-Za-z]{2}$").WithMessage("Token Country must be a two-letter country code.");
         }
     }
 
@@ -33,14 +37,17 @@ namespace Tubifarry.Download.Clients.SquidQobuz
         [FieldDefinition(0, Label = "Download Path", Type = FieldType.Path, HelpText = "Directory where downloaded files will be saved")]
         public string DownloadPath { get; set; } = string.Empty;
 
-        [FieldDefinition(1, Label = "Squid.wtf Qobuz URL", Type = FieldType.Textbox, HelpText = "URL of the squid.wtf Qobuz instance (region-specific)", Placeholder = "https://eu.qobuz.squid.wtf/api")]
-        public string BaseUrl { get; set; } = "https://eu.qobuz.squid.wtf/api";
+        [FieldDefinition(1, Label = "Squid.wtf Qobuz URL", Type = FieldType.Textbox, HelpText = "URL of the squid.wtf Qobuz API endpoint", Placeholder = "https://qobuz.squid.wtf/api")]
+        public string BaseUrl { get; set; } = "https://qobuz.squid.wtf/api";
 
         [FieldDefinition(2, Label = "Quality", Type = FieldType.Select, SelectOptions = typeof(SquidQobuzQuality), HelpText = "Preferred download quality")]
         public int Quality { get; set; } = (int)SquidQobuzQuality.LOSSLESS;
 
         [FieldDefinition(3, Type = FieldType.Number, Label = "Request Timeout", Unit = "seconds", HelpText = "Timeout for HTTP requests", Advanced = true)]
         public int RequestTimeout { get; set; } = 60;
+
+        [FieldDefinition(4, Label = "Token Country", Type = FieldType.Textbox, HelpText = "Two-letter country code sent to SquidWTF as the Token-Country header", Placeholder = "AU", Advanced = true)]
+        public string TokenCountry { get; set; } = "AU";
 
         public NzbDroneValidationResult Validate() => new(Validator.Validate(this));
     }

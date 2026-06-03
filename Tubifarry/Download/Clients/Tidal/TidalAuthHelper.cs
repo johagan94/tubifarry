@@ -4,18 +4,33 @@ using NLog;
 
 namespace Tubifarry.Download.Clients.Tidal
 {
+    public interface ITidalTokenProvider
+    {
+        string GetAccessToken(string clientId, string clientSecret);
+        void InvalidateToken(string clientId);
+    }
+
+    public class TidalTokenProvider(Logger logger) : ITidalTokenProvider
+    {
+        public string GetAccessToken(string clientId, string clientSecret) =>
+            TidalAuthHelper.GetAccessTokenAsync(clientId, clientSecret, logger).GetAwaiter().GetResult();
+
+        public void InvalidateToken(string clientId) => TidalAuthHelper.InvalidateToken(clientId);
+    }
+
     public static class TidalAuthHelper
     {
-        public const string ClientId = "txNoH4kkV41MfH25";
-        public const string ClientSecret = "dQjy0MinCEvxi1O4UmxvxWnDjt4cgHBPw8ll6nYBk98=";
         public const string AuthUrl = "https://auth.tidal.com/v1/oauth2/token";
 
         private static readonly ConcurrentDictionary<string, CachedToken> _tokenCache = new();
         private static readonly SemaphoreSlim _lock = new(1, 1);
 
-        public static async Task<string> GetAccessTokenAsync(Logger logger, CancellationToken token = default)
+        public static async Task<string> GetAccessTokenAsync(string clientId, string clientSecret, Logger logger, CancellationToken token = default)
         {
-            string cacheKey = "tidal_token";
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+                throw new InvalidOperationException("TIDAL client ID and client secret are required.");
+
+            string cacheKey = clientId;
 
             if (_tokenCache.TryGetValue(cacheKey, out CachedToken? cached) && cached.ExpiresAt > DateTime.UtcNow.AddMinutes(5))
             {
@@ -36,8 +51,8 @@ namespace Tubifarry.Download.Clients.Tidal
 
                 Dictionary<string, string> body = new()
                 {
-                    ["client_id"] = ClientId,
-                    ["client_secret"] = ClientSecret,
+                    ["client_id"] = clientId,
+                    ["client_secret"] = clientSecret,
                     ["grant_type"] = "client_credentials"
                 };
 
@@ -62,9 +77,10 @@ namespace Tubifarry.Download.Clients.Tidal
             }
         }
 
-        public static void InvalidateToken()
+        public static void InvalidateToken(string clientId)
         {
-            _tokenCache.TryRemove("tidal_token", out _);
+            if (!string.IsNullOrWhiteSpace(clientId))
+                _tokenCache.TryRemove(clientId, out _);
         }
 
         private record CachedToken(string Token, DateTime ExpiresAt);

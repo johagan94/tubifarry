@@ -57,8 +57,11 @@ namespace Tubifarry.Download.Clients.Tidal
         {
             _logger.Trace($"Processing {(Options.IsTrack ? "track" : "album")}: {ReleaseInfo.Title}");
 
-            string accessToken = await TidalAuthHelper.GetAccessTokenAsync(_logger, token);
-            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            if (Options.ConnectionMode == (int)TidalConnectionMode.DirectOpenApi)
+            {
+                string accessToken = await TidalAuthHelper.GetAccessTokenAsync(Options.ClientId, Options.ClientSecret, _logger, token);
+                _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            }
 
             if (Options.IsTrack)
                 await ProcessSingleTrackAsync(Options.ItemId, token);
@@ -82,9 +85,10 @@ namespace Tubifarry.Download.Clients.Tidal
                     BuildTrackFilename(
                         new Track { Title = ReleaseInfo.Title, TrackNumber = "1", AbsoluteTrackNumber = 1, Artist = new LazyLoaded<Artist>(new Artist { Name = ReleaseInfo.Artist ?? "Unknown Artist" }) },
                         new Album { Title = ReleaseInfo.Album ?? ReleaseInfo.Title }));
-                await ConvertAudioAsync(tempFile, outputFile, token);
+                string stagedFile = Path.Combine(_destinationPath.FullPath, $"tidal_converted_{Guid.NewGuid():N}{Path.GetExtension(outputFile)}");
+                stagedFile = await ConvertAudioAsync(tempFile, stagedFile, token);
 
-                InitiateDownload(outputFile, outputFile, token);
+                InitiateDownload(stagedFile, outputFile, token);
                 _requestContainer.Add(_trackContainer);
             }
             finally
@@ -134,7 +138,7 @@ namespace Tubifarry.Download.Clients.Tidal
                         Title = trackItem.Attributes?.Title ?? $"Track {i + 1}",
                         TrackNumber = (trackItem.Attributes?.TrackNumber ?? i + 1).ToString(),
                         AbsoluteTrackNumber = trackItem.Attributes?.TrackNumber ?? i + 1,
-                        Duration = trackItem.Attributes?.Duration ?? 0,
+                        Duration = (int)(trackItem.Attributes?.Duration ?? 0),
                         Artist = new LazyLoaded<Artist>(new Artist { Name = ReleaseInfo.Artist ?? "Unknown Artist" })
                     };
 
@@ -147,9 +151,10 @@ namespace Tubifarry.Download.Clients.Tidal
 
                     string fileName = BuildTrackFilename(trackMeta, albumMeta);
                     string outputFile = Path.Combine(_destinationPath.FullPath, fileName);
-                    await ConvertAudioAsync(tempFile, outputFile, token);
+                    string stagedFile = Path.Combine(_destinationPath.FullPath, $"tidal_converted_{Guid.NewGuid():N}{Path.GetExtension(outputFile)}");
+                    stagedFile = await ConvertAudioAsync(tempFile, stagedFile, token);
 
-                    InitiateDownload(outputFile, outputFile, token);
+                    InitiateDownload(stagedFile, outputFile, token);
                     _logger.Trace($"Track {i + 1}/{tracks.Count} processed: {trackItem.Attributes?.Title}");
                 }
                 catch (Exception ex)
@@ -164,19 +169,22 @@ namespace Tubifarry.Download.Clients.Tidal
         {
             string qualityFormats = Options.DownloadQuality switch
             {
-                0 => "FLAC_HIRES&formats=FLAC",           // HI_RES_LOSSLESS
+                0 => "formats=FLAC_HIRES,FLAC",           // HI_RES_LOSSLESS
                 1 => "formats=FLAC",                        // LOSSLESS
                 2 => "formats=AACLC",                       // HIGH
                 _ => "formats=HEAACV1"                      // LOW
             };
 
-            string url = $"{_baseUrl}/trackManifests/{trackId}?adaptive=true&manifestType=MPEG_DASH&uriScheme=HTTPS&usage=PLAYBACK&{qualityFormats}";
+            string url = Options.ConnectionMode == (int)TidalConnectionMode.MonochromeProxy
+                ? $"{Options.MonochromeBaseUrl.TrimEnd('/')}/trackManifests/?id={Uri.EscapeDataString(trackId)}&quality={GetProxyQuality()}&adaptive=false&{qualityFormats}"
+                : $"{_baseUrl}/trackManifests/{trackId}?adaptive=true&manifestType=MPEG_DASH&uriScheme=HTTPS&usage=PLAYBACK&{qualityFormats}";
 
             _logger.Trace($"Requesting manifest: {url}");
             string response = await _httpClient.GetStringAsync(url, token);
 
             TidalManifestResponse? manifestResponse = JsonSerializer.Deserialize<TidalManifestResponse>(response, JsonOptions);
-            string? manifestUri = manifestResponse?.Data?.Attributes?.Uri;
+            TidalManifestData? manifestData = manifestResponse?.Data?.Data ?? manifestResponse?.Data;
+            string? manifestUri = manifestData?.Attributes?.Uri;
 
             if (string.IsNullOrEmpty(manifestUri))
             {
@@ -184,15 +192,104 @@ namespace Tubifarry.Download.Clients.Tidal
                 throw new Exception($"No manifest URI in response for track {trackId}");
             }
 
+            if (string.Equals(manifestData?.Attributes?.TrackPresentation, "PREVIEW", StringComparison.OrdinalIgnoreCase))
+                _logger.Warn($"TIDAL proxy returned preview-only manifest for track {trackId}: {manifestData?.Attributes?.PreviewReason ?? "unknown reason"}");
+
             _logger.Trace($"Got manifest URI: {manifestUri}");
             return manifestUri;
         }
 
         private async Task<TidalAlbumResponse?> GetAlbumTracksAsync(string albumId, CancellationToken token)
         {
+            if (Options.ConnectionMode == (int)TidalConnectionMode.MonochromeProxy)
+                return await GetMonochromeAlbumTracksAsync(albumId, token);
+
             string url = $"{_baseUrl}/albums/{albumId}?countryCode={Options.CountryCode}&include=tracks";
             string response = await _httpClient.GetStringAsync(url, token);
             return JsonSerializer.Deserialize<TidalAlbumResponse>(response, JsonOptions);
+        }
+
+        private async Task<TidalAlbumResponse?> GetMonochromeAlbumTracksAsync(string albumId, CancellationToken token)
+        {
+            string url = $"{Options.MonochromeBaseUrl.TrimEnd('/')}/album/?id={Uri.EscapeDataString(albumId)}";
+            string response = await _httpClient.GetStringAsync(url, token);
+            TidalSearchResponse? proxyResponse = JsonSerializer.Deserialize<TidalSearchResponse>(response, JsonOptions);
+            TidalMonochromeAlbum? album = proxyResponse?.Data?.Albums?.Items?.FirstOrDefault();
+
+            if (album == null)
+            {
+                TidalMonochromeAlbum? rootAlbum = JsonSerializer.Deserialize<TidalMonochromeAlbumEnvelope>(response, JsonOptions)?.Data;
+                album = rootAlbum;
+            }
+
+            if (album == null)
+                return null;
+
+            TidalAlbumData albumData = new(
+                album.Id,
+                "albums",
+                new TidalAlbumAttributes(
+                    album.Title,
+                    album.ReleaseDate,
+                    album.NumberOfTracks,
+                    album.AudioQuality,
+                    null,
+                    BuildTidalImageUrl(album.Cover),
+                    album.Cover,
+                    album.Explicit),
+                null);
+
+            List<TidalIncludedItem> tracks = album.Items?
+                .Select((entry, index) => ConvertMonochromeTrack(entry.Item, album, index))
+                .Where(item => item != null)
+                .Cast<TidalIncludedItem>()
+                .ToList() ?? [];
+
+            return new TidalAlbumResponse(albumData, tracks);
+        }
+
+        private static TidalIncludedItem? ConvertMonochromeTrack(TidalMonochromeTrack? track, TidalMonochromeAlbum album, int index)
+        {
+            if (track == null)
+                return null;
+
+            return new TidalIncludedItem(
+                track.Id,
+                "tracks",
+                new TidalIncludedAttributes(
+                    track.Title,
+                    track.Artist?.Name ?? track.Artists?.FirstOrDefault()?.Name,
+                    null,
+                    track.Cover ?? album.Cover,
+                    track.ReleaseDate ?? album.ReleaseDate,
+                    null,
+                    null,
+                    track.TrackNumber ?? index + 1,
+                    track.Duration,
+                    track.AudioQuality ?? album.AudioQuality,
+                    track.Explicit,
+                    null),
+                null);
+        }
+
+        private string GetProxyQuality() => Options.DownloadQuality switch
+        {
+            0 => "HI_RES_LOSSLESS",
+            1 => "LOSSLESS",
+            2 => "HIGH",
+            _ => "LOW"
+        };
+
+        private static string? BuildTidalImageUrl(string? cover)
+        {
+            if (string.IsNullOrWhiteSpace(cover))
+                return null;
+
+            if (Uri.IsWellFormedUriString(cover, UriKind.Absolute))
+                return cover;
+
+            string normalized = cover.Replace("-", "/");
+            return $"https://resources.tidal.com/images/{normalized}/1280x1280.jpg";
         }
 
         private async Task DownloadDashSegmentsAsync(string manifestUrl, string outputFile, CancellationToken token)
@@ -285,7 +382,7 @@ namespace Tubifarry.Download.Clients.Tidal
             _logger.Trace($"Downloaded all {segmentNumbers.Count} segments to: {outputFile}");
         }
 
-        private async Task ConvertAudioAsync(string inputFile, string outputFile, CancellationToken token)
+        private async Task<string> ConvertAudioAsync(string inputFile, string outputFile, CancellationToken token)
         {
             string outputExt = Options.OutputFormat switch
             {
@@ -304,7 +401,7 @@ namespace Tubifarry.Download.Clients.Tidal
                 _logger.Warn("FFmpeg not found, keeping raw M4S concatenation");
                 if (inputFile != outputFile)
                     File.Copy(inputFile, outputFile, true);
-                return;
+                return outputFile;
             }
 
             string args = Options.OutputFormat switch
@@ -345,6 +442,8 @@ namespace Tubifarry.Download.Clients.Tidal
                 _logger.Trace($"FFmpeg conversion complete: {outputFile}");
                 try { File.Delete(inputFile); } catch { }
             }
+
+            return outputFile;
         }
 
         private string BuildMp3Args(string inputFile, string outputFile)
@@ -415,6 +514,13 @@ namespace Tubifarry.Download.Clients.Tidal
                 DestinationPath = _destinationPath.FullPath,
                 Handler = Options.Handler,
                 DeleteFilesOnFailure = true,
+                RequestCompleated = (_, __) =>
+                {
+                    if (!string.Equals(sourceFile, finalDest, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { File.Delete(sourceFile); } catch { }
+                    }
+                },
                 RequestFailed = (_, __) => LogAndAppendMessage($"File copy failed: {finalDest}", LogLevel.Error),
                 WriteMode = WriteMode.AppendOrTruncate,
             });

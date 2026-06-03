@@ -11,9 +11,59 @@ namespace Tubifarry.Indexers.Tidal
         [property: JsonPropertyName("limit")] int Limit);
 
     public record TidalSearchResponse(
-        [property: JsonPropertyName("data")] List<TidalSearchItem>? Data,
+        [property: JsonPropertyName("data")] TidalSearchData? Data,
         [property: JsonPropertyName("included")] List<TidalIncludedItem>? Included,
         [property: JsonPropertyName("meta")] TidalSearchMeta? Meta);
+
+    public record TidalSearchData(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("type")] string? Type,
+        [property: JsonPropertyName("attributes")] TidalSearchDataAttributes? Attributes,
+        [property: JsonPropertyName("relationships")] TidalSearchRelationships? Relationships,
+        [property: JsonPropertyName("albums")] TidalMonochromeAlbumSection? Albums);
+
+    public record TidalMonochromeAlbumSection(
+        [property: JsonPropertyName("items")] List<TidalMonochromeAlbum>? Items);
+
+    public record TidalMonochromeAlbumEnvelope(
+        [property: JsonPropertyName("data")] TidalMonochromeAlbum? Data);
+
+    public record TidalMonochromeAlbum(
+        [property: JsonPropertyName("id"), JsonConverter(typeof(StringConverter))] string Id,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("duration"), JsonConverter(typeof(NullableDoubleConverter))] double? Duration,
+        [property: JsonPropertyName("numberOfTracks")] int? NumberOfTracks,
+        [property: JsonPropertyName("releaseDate")] string? ReleaseDate,
+        [property: JsonPropertyName("audioQuality")] string? AudioQuality,
+        [property: JsonPropertyName("cover")] string? Cover,
+        [property: JsonPropertyName("explicit")] bool? Explicit,
+        [property: JsonPropertyName("artist")] TidalMonochromeArtist? Artist,
+        [property: JsonPropertyName("artists")] List<TidalMonochromeArtist>? Artists,
+        [property: JsonPropertyName("items")] List<TidalMonochromeTrackItem>? Items);
+
+    public record TidalMonochromeTrackItem(
+        [property: JsonPropertyName("item")] TidalMonochromeTrack? Item,
+        [property: JsonPropertyName("type")] string? Type);
+
+    public record TidalMonochromeTrack(
+        [property: JsonPropertyName("id"), JsonConverter(typeof(StringConverter))] string Id,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("duration"), JsonConverter(typeof(NullableDoubleConverter))] double? Duration,
+        [property: JsonPropertyName("trackNumber")] int? TrackNumber,
+        [property: JsonPropertyName("releaseDate")] string? ReleaseDate,
+        [property: JsonPropertyName("audioQuality")] string? AudioQuality,
+        [property: JsonPropertyName("cover")] string? Cover,
+        [property: JsonPropertyName("explicit")] bool? Explicit,
+        [property: JsonPropertyName("artist")] TidalMonochromeArtist? Artist,
+        [property: JsonPropertyName("artists")] List<TidalMonochromeArtist>? Artists,
+        [property: JsonPropertyName("album")] TidalMonochromeAlbum? Album);
+
+    public record TidalMonochromeArtist(
+        [property: JsonPropertyName("id"), JsonConverter(typeof(NullableStringConverter))] string? Id,
+        [property: JsonPropertyName("name")] string? Name);
+
+    public record TidalSearchDataAttributes(
+        [property: JsonPropertyName("totalResults")] int? TotalResults);
 
     public record TidalSearchItem(
         [property: JsonPropertyName("id")] string Id,
@@ -26,7 +76,7 @@ namespace Tubifarry.Indexers.Tidal
         [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("artist")] string? Artist,
         [property: JsonPropertyName("trackNumber")] int? TrackNumber,
-        [property: JsonPropertyName("duration")] int? Duration,
+        [property: JsonPropertyName("duration"), JsonConverter(typeof(NullableDoubleConverter))] double? Duration,
         [property: JsonPropertyName("numberOfTracks")] int? NumberOfTracks,
         [property: JsonPropertyName("releaseDate")] string? ReleaseDate,
         [property: JsonPropertyName("audioQuality")] string? AudioQuality,
@@ -34,7 +84,7 @@ namespace Tubifarry.Indexers.Tidal
         [property: JsonPropertyName("popularity")] int? Popularity,
         [property: JsonPropertyName("explicit")] bool? Explicit,
         [property: JsonPropertyName("version")] string? Version,
-        [property: JsonPropertyName("copyright")] string? Copyright,
+        [property: JsonPropertyName("copyright"), JsonConverter(typeof(NullableStringConverter))] string? Copyright,
         [property: JsonPropertyName("url")] string? Url);
 
     public record TidalSearchRelationships(
@@ -52,7 +102,8 @@ namespace Tubifarry.Indexers.Tidal
     public record TidalIncludedItem(
         [property: JsonPropertyName("id")] string Id,
         [property: JsonPropertyName("type")] string Type,
-        [property: JsonPropertyName("attributes")] TidalIncludedAttributes? Attributes);
+        [property: JsonPropertyName("attributes")] TidalIncludedAttributes? Attributes,
+        [property: JsonPropertyName("relationships")] TidalSearchRelationships? Relationships);
 
     public record TidalIncludedAttributes(
         [property: JsonPropertyName("title")] string? Title,
@@ -61,11 +112,12 @@ namespace Tubifarry.Indexers.Tidal
         [property: JsonPropertyName("cover")] string? Cover,
         [property: JsonPropertyName("releaseDate")] string? ReleaseDate,
         [property: JsonPropertyName("numberOfTracks")] int? NumberOfTracks,
+        [property: JsonPropertyName("numberOfItems")] int? NumberOfItems,
         [property: JsonPropertyName("trackNumber")] int? TrackNumber,
-        [property: JsonPropertyName("duration")] int? Duration,
+        [property: JsonPropertyName("duration"), JsonConverter(typeof(NullableDoubleConverter))] double? Duration,
         [property: JsonPropertyName("audioQuality")] string? AudioQuality,
         [property: JsonPropertyName("explicit")] bool? Explicit,
-        [property: JsonPropertyName("copyright")] string? Copyright);
+        [property: JsonPropertyName("copyright"), JsonConverter(typeof(NullableStringConverter))] string? Copyright);
 
     public record TidalSearchMeta(
         [property: JsonPropertyName("totalResults")] int TotalResults);
@@ -89,12 +141,14 @@ namespace Tubifarry.Indexers.Tidal
     public record TidalManifestData(
         [property: JsonPropertyName("id")] string Id,
         [property: JsonPropertyName("type")] string Type,
-        [property: JsonPropertyName("attributes")] TidalManifestAttributes? Attributes);
+        [property: JsonPropertyName("attributes")] TidalManifestAttributes? Attributes,
+        [property: JsonPropertyName("data")] TidalManifestData? Data);
 
     public record TidalManifestAttributes(
         [property: JsonPropertyName("uri")] string? Uri,
         [property: JsonPropertyName("formats")] List<string>? Formats,
         [property: JsonPropertyName("trackPresentation")] string? TrackPresentation,
+        [property: JsonPropertyName("previewReason")] string? PreviewReason,
         [property: JsonPropertyName("hash")] string? Hash);
 
     #endregion Track Manifest Models
@@ -112,11 +166,11 @@ namespace Tubifarry.Indexers.Tidal
     public record TidalTrackAttributes(
         [property: JsonPropertyName("title")] string? Title,
         [property: JsonPropertyName("trackNumber")] int? TrackNumber,
-        [property: JsonPropertyName("duration")] int? Duration,
+        [property: JsonPropertyName("duration"), JsonConverter(typeof(NullableDoubleConverter))] double? Duration,
         [property: JsonPropertyName("isrc")] string? Isrc,
         [property: JsonPropertyName("audioQuality")] string? AudioQuality,
         [property: JsonPropertyName("explicit")] bool? Explicit,
-        [property: JsonPropertyName("copyright")] string? Copyright,
+        [property: JsonPropertyName("copyright"), JsonConverter(typeof(NullableStringConverter))] string? Copyright,
         [property: JsonPropertyName("version")] string? Version);
 
     #endregion Track Metadata Models
@@ -138,7 +192,7 @@ namespace Tubifarry.Indexers.Tidal
         [property: JsonPropertyName("releaseDate")] string? ReleaseDate,
         [property: JsonPropertyName("numberOfTracks")] int? NumberOfTracks,
         [property: JsonPropertyName("audioQuality")] string? AudioQuality,
-        [property: JsonPropertyName("copyright")] string? Copyright,
+        [property: JsonPropertyName("copyright"), JsonConverter(typeof(NullableStringConverter))] string? Copyright,
         [property: JsonPropertyName("imageUrl")] string? ImageUrl,
         [property: JsonPropertyName("cover")] string? Cover,
         [property: JsonPropertyName("explicit")] bool? Explicit);
